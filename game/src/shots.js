@@ -2,8 +2,8 @@
 // parts — the wave director, the spawner, the particle and floater systems — and then played
 // forward under a simple autopilot for a fixed number of fixed steps, so the frame is a real
 // moment of a real game and the same seed always gives the same frame.
-import { FIELD, STEP } from './config.js';
-import { KIND_CHASER, KIND_MINI, KIND_ORBITER, KIND_SPLITTER, PICKUP_REPAIR } from './world.js';
+import { ENEMY, FIELD, STEP } from './config.js';
+import { KIND_CHASER, KIND_LANCER, KIND_MINI, KIND_ORBITER, KIND_SPLITTER, LANCER_TELEGRAPH, PICKUP_REPAIR } from './world.js';
 import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
 
 const START_SECONDS = 5;
@@ -83,9 +83,11 @@ function stageStart(world) {
 }
 
 /**
- * play: a composed wave 3 — chasers, orbiters, a splitter and its kind, a repair core on the
- * field, a combo already running — played forward under the pilot so the bullets, particles
- * and floaters in frame were all earned by the real rules.
+ * play: a composed wave 3 — chasers, orbiters, a splitter and its kind, a lancer stalking,
+ * a repair core on the field, a combo already running — played forward under the pilot so
+ * the bullets, particles and floaters in frame were all earned by the real rules. A second
+ * lancer is then placed fresh, caught mid-telegraph with its aim line locked on the ship,
+ * so the frame always shows the new hunter's signature moment.
  */
 function stagePlay(world) {
   const state = world.state;
@@ -104,6 +106,7 @@ function stagePlay(world) {
     [KIND_ORBITER, 255, 545], [KIND_ORBITER, 905, 305],
     [KIND_SPLITTER, 645, 165],
     [KIND_MINI, 470, 250], [KIND_MINI, 830, 480],
+    [KIND_LANCER, 240, 330],
   ];
   for (const [kind, x, y] of cast) {
     const enemy = world.spawnEnemy(kind, x, y);
@@ -111,6 +114,23 @@ function stagePlay(world) {
   }
   world.dropPickup(770, 565, PICKUP_REPAIR);
   stepSeconds(world, PLAY_SECONDS, false, true);
+
+  // The composed lancer, placed after the fight so the frame catches it mid-telegraph:
+  // locked onto the ship's position, a little past halfway through its 0.7 s wind-up.
+  const lancer = world.spawnEnemy(KIND_LANCER, 1005, 155);
+  if (lancer !== null) {
+    lancer.spawnIn = 0;
+    lancer.vx = 0;
+    lancer.vy = 0;
+    const dx = state.player.x - lancer.x;
+    const dy = state.player.y - lancer.y;
+    const length = Math.hypot(dx, dy) || 1;
+    lancer.dashX = dx / length;
+    lancer.dashY = dy / length;
+    lancer.angle = Math.atan2(lancer.dashY, lancer.dashX);
+    lancer.mode = LANCER_TELEGRAPH;
+    lancer.modeTimer = ENEMY.lancer.telegraphSeconds * 0.55;
+  }
 
   // Top the frame up from the same systems if the pilot's fight ran quiet: a fresh burst of
   // sparks off a live enemy, a floater, and late chasers at the edges keep the shot honest

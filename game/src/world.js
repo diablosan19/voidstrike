@@ -14,7 +14,15 @@ export const KIND_CHASER = 'chaser';
 export const KIND_ORBITER = 'orbiter';
 export const KIND_SPLITTER = 'splitter';
 export const KIND_MINI = 'mini';
+export const KIND_LANCER = 'lancer';
 export const KIND_BOSS = 'boss';
+
+/** The lancer's behaviour modes, stored on the enemy: it stalks (approach), locks its line
+ * (telegraph), dashes, then cools down before it may telegraph again. */
+export const LANCER_APPROACH = 0;
+export const LANCER_TELEGRAPH = 1;
+export const LANCER_DASH = 2;
+export const LANCER_COOLDOWN = 3;
 
 export const PICKUP_REPAIR = 'repair';
 export const PICKUP_RAPID = 'rapid';
@@ -29,6 +37,8 @@ export const EVENT_PICKUP = 64;
 export const EVENT_WAVE = 128;
 export const EVENT_OVER = 256;
 export const EVENT_BURST = 512;
+export const EVENT_TELEGRAPH = 1024;
+export const EVENT_CHARGE = 2048;
 
 const TAU = Math.PI * 2;
 
@@ -61,6 +71,7 @@ export function createWorld(random) {
   const enemies = makePool(POOL.enemies, () => ({
     active: false, kind: KIND_CHASER, x: 0, y: 0, vx: 0, vy: 0, hp: 1, maxHp: 1, radius: 10,
     angle: 0, age: 0, phase: 0, flash: 0, spawnIn: 0, fireTimer: 0, orbitDir: 1,
+    mode: 0, modeTimer: 0, dashX: 0, dashY: 0,
   }));
   const particles = makePool(POOL.particles, () => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 2, color: '#ffffff', drag: 1,
@@ -160,6 +171,10 @@ export function createWorld(random) {
     enemy.spawnIn = 0.5;
     enemy.fireTimer = tuning.burstEvery ? tuning.burstEvery * (0.6 + random() * 0.5) : 0;
     enemy.orbitDir = random() < 0.5 ? -1 : 1;
+    enemy.mode = LANCER_APPROACH;
+    enemy.modeTimer = 0;
+    enemy.dashX = 0;
+    enemy.dashY = 0;
     if (kind === KIND_BOSS) state.boss = enemy;
     return enemy;
   }
@@ -201,6 +216,7 @@ export function createWorld(random) {
       for (let index = 0; index < WAVE.chasers(wave); index += 1) queue.push(KIND_CHASER);
       for (let index = 0; index < WAVE.orbiters(wave); index += 1) queue.push(KIND_ORBITER);
       for (let index = 0; index < WAVE.splitters(wave); index += 1) queue.push(KIND_SPLITTER);
+      for (let index = 0; index < WAVE.lancers(wave); index += 1) queue.push(KIND_LANCER);
       // Shuffle the mix so kinds arrive interleaved, not in blocks.
       for (let index = queue.length - 1; index > 0; index -= 1) {
         const swap = Math.floor(random() * (index + 1));
@@ -258,10 +274,16 @@ export function createWorld(random) {
       state.multiplier = next;
       addFloater(player.x, player.y - 34, `COMBO x${next}`, '#fbbf24', 24);
     }
-    const points = ENEMY[enemy.kind].score * state.multiplier;
+    // A lancer shot down mid-dash pays a bonus on top of its score: the charge was the
+    // dangerous moment, and killing it then is the play the bonus exists to reward.
+    const chargeBonus = enemy.kind === KIND_LANCER && enemy.mode === LANCER_DASH
+      ? ENEMY.lancer.chargeBonus * state.multiplier
+      : 0;
+    const points = ENEMY[enemy.kind].score * state.multiplier + chargeBonus;
     state.score += points;
     state.kills += 1;
     addFloater(enemy.x, enemy.y - enemy.radius - 6, `+${points}`, '#e2e8f0', enemy.kind === KIND_BOSS ? 30 : 18);
+    if (chargeBonus > 0) addFloater(enemy.x, enemy.y + enemy.radius + 14, `CHARGE BREAK +${chargeBonus}`, '#facc15', 19);
   }
 
   function killEnemy(enemy, events) {
@@ -299,6 +321,7 @@ export function createWorld(random) {
     if (kind === KIND_ORBITER) return '#38bdf8';
     if (kind === KIND_SPLITTER) return '#4ade80';
     if (kind === KIND_MINI) return '#fb923c';
+    if (kind === KIND_LANCER) return '#facc15';
     return '#c084fc';
   }
 
@@ -335,6 +358,78 @@ export function createWorld(random) {
     }
   }
 
+  /**
+   * The lancer's one step of behaviour: sets its velocity, facing and mode, and returns any
+   * events. It stalks the ship at its keep-distance ring, strafing; once it has held the
+   * firing band for readySeconds it locks a line on the ship's position (the telegraph —
+   * the renderer draws that line), brakes, and when the timer runs out dashes along the
+   * locked line at full dash speed. After the dash it drifts through a cooldown before it
+   * may stalk again. The line never re-aims mid-telegraph: a pilot who moves off it is safe.
+   */
+  function stepLancer(enemy, dt, tuning) {
+    const dx = player.x - enemy.x;
+    const dy = player.y - enemy.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    let events = 0;
+    if (enemy.mode === LANCER_TELEGRAPH) {
+      enemy.vx *= Math.max(0, 1 - 10 * dt);
+      enemy.vy *= Math.max(0, 1 - 10 * dt);
+      enemy.angle = Math.atan2(enemy.dashY, enemy.dashX);
+      enemy.modeTimer -= dt;
+      if (enemy.modeTimer <= 0) {
+        enemy.mode = LANCER_DASH;
+        enemy.modeTimer = tuning.dashSeconds;
+        enemy.vx = enemy.dashX * tuning.dashSpeed;
+        enemy.vy = enemy.dashY * tuning.dashSpeed;
+        burst(enemy.x, enemy.y, '#facc15', 8, 120, 2.2, 0.3);
+        events |= EVENT_CHARGE;
+      }
+      return events;
+    }
+    if (enemy.mode === LANCER_DASH) {
+      enemy.angle = Math.atan2(enemy.vy, enemy.vx);
+      enemy.modeTimer -= dt;
+      if (enemy.modeTimer <= 0) {
+        enemy.mode = LANCER_COOLDOWN;
+        enemy.modeTimer = tuning.cooldownSeconds;
+      }
+      return events;
+    }
+    // Approach and cooldown share the stalk: hold the ring, strafe slowly around it.
+    const band = tuning.keepDistance;
+    const radial = dist > band + 30 ? 1 : dist < band - 60 ? -0.7 : 0;
+    const tx = (dx / dist) * radial + (-dy / dist) * 0.55 * enemy.orbitDir;
+    const ty = (dy / dist) * radial + (dx / dist) * 0.55 * enemy.orbitDir;
+    enemy.vx += tx * tuning.accel * dt;
+    enemy.vy += ty * tuning.accel * dt;
+    const pace = Math.hypot(enemy.vx, enemy.vy);
+    if (pace > tuning.speed) {
+      enemy.vx = (enemy.vx / pace) * tuning.speed;
+      enemy.vy = (enemy.vy / pace) * tuning.speed;
+    }
+    enemy.angle = pace > 12 ? Math.atan2(enemy.vy, enemy.vx) : Math.atan2(dy, dx);
+    if (enemy.mode === LANCER_COOLDOWN) {
+      enemy.modeTimer -= dt;
+      if (enemy.modeTimer <= 0) {
+        enemy.mode = LANCER_APPROACH;
+        enemy.modeTimer = 0;
+      }
+    } else if (dist < band + 60 && dist > 120) {
+      // In the firing band: count the hold, then commit to a telegraph on the ship's line.
+      enemy.modeTimer += dt;
+      if (enemy.modeTimer >= tuning.readySeconds) {
+        enemy.mode = LANCER_TELEGRAPH;
+        enemy.modeTimer = tuning.telegraphSeconds;
+        enemy.dashX = dx / dist;
+        enemy.dashY = dy / dist;
+        events |= EVENT_TELEGRAPH;
+      }
+    } else {
+      enemy.modeTimer = Math.max(0, enemy.modeTimer - dt * 2);
+    }
+    return events;
+  }
+
   function stepEnemy(enemy, dt, harmless) {
     const tuning = ENEMY[enemy.kind];
     enemy.age += dt;
@@ -356,6 +451,7 @@ export function createWorld(random) {
       enemy.angle += dt * 0.4;
       return;
     }
+    let events = 0;
     if (enemy.kind === KIND_ORBITER) {
       const dx = player.x - enemy.x;
       const dy = player.y - enemy.y;
@@ -373,6 +469,8 @@ export function createWorld(random) {
       }
       if (random() < dt * 0.25) enemy.orbitDir *= -1;
       enemy.angle = Math.atan2(dy, dx);
+    } else if (enemy.kind === KIND_LANCER) {
+      events = stepLancer(enemy, dt, tuning);
     } else {
       // Chasers, minis, splitters and the boss all hunt the ship, each at its own pace; a
       // little sinusoidal wobble keeps their lines from looking railed.
@@ -407,7 +505,7 @@ export function createWorld(random) {
         return EVENT_BURST;
       }
     }
-    return 0;
+    return events;
   }
 
   /**
@@ -533,7 +631,7 @@ export function createWorld(random) {
       const drifting = enemies.reduce((count, enemy) => count + (enemy.active ? 1 : 0), 0);
       if (state.ambientTimer <= 0 && drifting < 7) {
         state.ambientTimer = 0.9;
-        const kinds = [KIND_CHASER, KIND_ORBITER, KIND_SPLITTER, KIND_MINI];
+        const kinds = [KIND_CHASER, KIND_ORBITER, KIND_SPLITTER, KIND_MINI, KIND_LANCER];
         const at = edgePoint();
         const enemy = spawnEnemy(kinds[Math.floor(random() * kinds.length)], at.x, at.y);
         if (enemy !== null) {

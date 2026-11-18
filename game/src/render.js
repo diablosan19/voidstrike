@@ -3,8 +3,8 @@
 // drawn in code — neon strokes and additive glows over a parallax starfield and nebula wash.
 // Screen shake is a pure function of the world's clock, so a staged frame shakes identically
 // every time it is drawn.
-import { COMBO, FIELD, FONT, PALETTE, PLAYER } from './config.js';
-import { KIND_BOSS, KIND_MINI, KIND_ORBITER, KIND_SPLITTER, PICKUP_RAPID } from './world.js';
+import { COMBO, ENEMY, FIELD, FONT, PALETTE, PLAYER } from './config.js';
+import { KIND_BOSS, KIND_LANCER, KIND_MINI, KIND_ORBITER, KIND_SPLITTER, LANCER_DASH, LANCER_TELEGRAPH, PICKUP_RAPID } from './world.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -175,6 +175,15 @@ export function createRenderer(canvas) {
         else context.lineTo(Math.cos(a) * r, Math.sin(a) * r);
       }
       context.closePath();
+    } else if (enemy.kind === KIND_LANCER) {
+      // A spear: a long point ahead, swept fins behind, a notch at the tail.
+      context.moveTo(r * 1.8, 0);
+      context.lineTo(-r * 0.55, r * 0.52);
+      context.lineTo(-r * 1.05, r * 0.95);
+      context.lineTo(-r * 0.8, 0);
+      context.lineTo(-r * 1.05, -r * 0.95);
+      context.lineTo(-r * 0.55, -r * 0.52);
+      context.closePath();
     } else {
       // Chasers and minis: the same dart silhouette as the ship, flown by the other side.
       context.moveTo(r * 1.15, 0);
@@ -190,7 +199,45 @@ export function createRenderer(canvas) {
       : enemy.kind === KIND_SPLITTER ? PALETTE.splitter
         : enemy.kind === KIND_MINI ? PALETTE.mini
           : enemy.kind === KIND_BOSS ? PALETTE.boss
-            : PALETTE.chaser;
+            : enemy.kind === KIND_LANCER ? PALETTE.lancer
+              : PALETTE.chaser;
+    if (enemy.kind === KIND_LANCER && enemy.mode === LANCER_TELEGRAPH && enemy.spawnIn <= 0) {
+      // The telegraph, drawn in field space before the shape: a dashed line along the
+      // locked dash direction, as long as the dash itself, brightening as it counts down,
+      // with a tick across its end. What you see is exactly where it will go.
+      const length = ENEMY.lancer.dashSpeed * ENEMY.lancer.dashSeconds;
+      const endX = enemy.x + enemy.dashX * length;
+      const endY = enemy.y + enemy.dashY * length;
+      const progress = 1 - enemy.modeTimer / ENEMY.lancer.telegraphSeconds;
+      context.save();
+      context.globalAlpha = 0.22 + progress * 0.6;
+      context.strokeStyle = PALETTE.lancer;
+      context.lineWidth = 2;
+      context.setLineDash([10, 8]);
+      context.beginPath();
+      context.moveTo(enemy.x, enemy.y);
+      context.lineTo(endX, endY);
+      context.stroke();
+      context.setLineDash([]);
+      context.beginPath();
+      context.moveTo(endX - enemy.dashY * 9, endY + enemy.dashX * 9);
+      context.lineTo(endX + enemy.dashY * 9, endY - enemy.dashX * 9);
+      context.stroke();
+      context.restore();
+    }
+    if (enemy.kind === KIND_LANCER && enemy.mode === LANCER_DASH) {
+      // A motion streak trailing the dash, so the speed reads in a still frame.
+      context.save();
+      context.globalAlpha = 0.4;
+      context.strokeStyle = PALETTE.lancer;
+      context.lineWidth = enemy.radius * 1.1;
+      context.lineCap = 'round';
+      context.beginPath();
+      context.moveTo(enemy.x - enemy.vx * 0.055, enemy.y - enemy.vy * 0.055);
+      context.lineTo(enemy.x, enemy.y);
+      context.stroke();
+      context.restore();
+    }
     context.save();
     context.translate(enemy.x, enemy.y);
     if (enemy.spawnIn > 0) {
@@ -246,6 +293,14 @@ export function createRenderer(canvas) {
       context.fillStyle = color;
       context.beginPath();
       context.arc(0, 0, 3.4, 0, TAU);
+      context.fill();
+    }
+    if (enemy.kind === KIND_LANCER && enemy.mode === LANCER_TELEGRAPH) {
+      // A core that swells white as the telegraph runs down: the charge is coming.
+      const progress = 1 - enemy.modeTimer / ENEMY.lancer.telegraphSeconds;
+      context.fillStyle = '#ffffff';
+      context.beginPath();
+      context.arc(0, 0, 2.5 + progress * 3.6, 0, TAU);
       context.fill();
     }
     context.restore();

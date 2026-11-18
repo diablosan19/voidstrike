@@ -3,8 +3,8 @@
 // gesture (unlock), as browsers require; before that, play() is a no-op. Sounds are throttled
 // per kind so a busy second of combat stays a texture, not a pile-up.
 import {
-  EVENT_BIG_KILL, EVENT_BURST, EVENT_DASH, EVENT_HIT, EVENT_KILL,
-  EVENT_OVER, EVENT_PICKUP, EVENT_PLAYER_HIT, EVENT_SHOOT, EVENT_WAVE,
+  EVENT_BIG_KILL, EVENT_BURST, EVENT_CHARGE, EVENT_DASH, EVENT_HIT, EVENT_KILL,
+  EVENT_OVER, EVENT_PICKUP, EVENT_PLAYER_HIT, EVENT_SHOOT, EVENT_TELEGRAPH, EVENT_WAVE,
 } from './world.js';
 
 export function createAudio() {
@@ -85,6 +85,8 @@ export function createAudio() {
       tone('sine', 96, 28, 0.5, 0.4);
     }
     if (events & EVENT_BURST && throttle('burst', 120)) tone('sawtooth', 130, 60, 0.22, 0.1);
+    if (events & EVENT_TELEGRAPH && throttle('telegraph', 90)) tone('sawtooth', 180, 720, 0.5, 0.06);
+    if (events & EVENT_CHARGE && throttle('charge', 90)) noise(0.28, 0.2, 'bandpass', 300, 2400);
     if (events & EVENT_PLAYER_HIT && throttle('hurt', 90)) {
       tone('sawtooth', 230, 55, 0.24, 0.26);
       noise(0.14, 0.18, 'highpass', 500, 2400);

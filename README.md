@@ -1,8 +1,8 @@
 # VOIDSTRIKE — neon arena survival shooter
 
 [![make.fun · best-game-01](https://make.fun/badge/best-game-01.svg)](https://make.fun/bounty/best-game-01?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
-[![rank](https://make.fun/badge/best-game-01/OWNER/REPO/rank.svg)](https://make.fun/bounty/best-game-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
-[![reward](https://make.fun/badge/best-game-01/OWNER/REPO/reward.svg)](https://make.fun/bounty/best-game-01?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
+[![rank](https://make.fun/badge/best-game-01/diablosan19/voidstrike/rank.svg)](https://make.fun/bounty/best-game-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
+[![reward](https://make.fun/badge/best-game-01/diablosan19/voidstrike/reward.svg)](https://make.fun/bounty/best-game-01?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
 
 One ship, one arena, endless waves. VOIDSTRIKE is a neon arena survival shooter that runs entirely in the browser: a fixed-step simulation, canvas rendering, synthesised sound, and not a single asset file or network request. Survive the waves, chain kills into a rising combo multiplier, salvage cores from the wreckage, and face the Dreadnought every fifth wave.
 
